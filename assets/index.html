@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KatNip — Snack Trail</title>
+<style>
+  :root{
+    --cream:#f7ecd6; --cream2:#efe0c2; --ink:#5b4a2f; --ink2:#8a7a58;
+    --accent:#d1697f; --accent-d:#b6516a; --edge:#e6d3ac;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; height:100%; overflow:hidden}
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif; color:var(--ink);
+    background:#8fb0c8 url("Background.png") center top / cover no-repeat fixed;
+    height:100%; padding:14px 12px 24px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .wrap{width:100%; max-width:460px; height:100%; display:flex; flex-direction:column; align-items:center; margin:auto}
+  /* board area flexes to fill the space between the goal chip and the toolbar */
+  .boardwrap{display:flex; justify-content:center; align-items:center; flex:1 1 auto; min-height:0}
+
+  /* ---- level nav (discreet) ---- */
+  .lvnav{display:flex; align-items:center; gap:10px; margin:2px 0 18px;
+    background:rgba(255,250,240,.55); border-radius:20px; padding:3px 6px; backdrop-filter:blur(2px)}
+  .lvnav button{width:30px; height:30px; border:none; border-radius:50%; background:var(--cream);
+    color:var(--ink); font-size:17px; font-weight:800; cursor:pointer; box-shadow:0 2px 0 #d8c2a0}
+  .lvnav .lbl{font-size:13px; font-weight:800; color:#5b4a2f; letter-spacing:.5px; min-width:66px; text-align:center}
+
+  /* ---- goal chip ---- */
+  .goalchip{background:var(--cream); border:2px solid #f2e6cf; border-radius:20px;
+    padding:8px 26px; text-align:center; box-shadow:0 5px 0 #dcc8a2, 0 10px 18px rgba(40,50,30,.22); margin-bottom:12px}
+  .goalchip .k{font-size:14px; font-weight:800; color:#6a5836; letter-spacing:.5px}
+  .goalchip .v{display:flex; align-items:center; justify-content:center; gap:8px; font-size:22px; font-weight:900; color:var(--ink)}
+  .goalchip .caticon{width:30px; height:30px; background:url("CatIdleFrontAndBack.png") 0% 0% / 200% 100% no-repeat}
+  .goal{font-size:12px; color:#4c5b3a; text-align:center; margin:6px 10px 20px; min-height:15px; line-height:1.4;
+    text-shadow:0 1px 2px rgba(255,255,255,.5)}
+  .goal b{color:var(--accent-d)} .goal i{color:#3f6b2a; font-style:normal; font-weight:800}
+
+  /* ---- board (island) ---- */
+  .boardwrap{width:100%; margin:6px auto 22px}
+  .board{position:relative; touch-action:none}
+  /* touch-action must be on the actual touch targets (it isn't inherited) */
+  .board *, .igrid, .icell, .toolbar, .toolbar *{touch-action:none}
+  /* island base slab (9-slice art) sits under the grass, follows land tiles (not water/void) */
+  .baselayer{position:absolute; inset:0; z-index:0;
+    filter:drop-shadow(0 6px 0 #394018) drop-shadow(0 12px 8px rgba(30,40,18,.4))}
+  .basetile{background:#7C7C4C}  /* corner rounding set per-tile: only real island corners */
+  .tilelayer{position:absolute; inset:0; z-index:1}
+  .sprite{position:absolute; background-repeat:no-repeat; background-position:center; background-size:contain}
+  .tile{background-size:cover; box-shadow:inset 0 -6px 7px -4px rgba(30,40,15,.45)}
+  .tile.dark{filter:brightness(.9) saturate(1.08)}
+  .watertile{background-size:cover; opacity:.7}   /* translucent so the pond shows through the texture */
+  .cat{pointer-events:none; transition:left .2s linear, top .2s linear}
+  .catbody{width:100%; height:100%; background-repeat:no-repeat; transform-origin:50% 90%}
+  .igrid{position:absolute; inset:0; z-index:9000; touch-action:none}
+  .icell{position:absolute; cursor:pointer}
+  .icell.block{cursor:default}
+
+  /* ---- toolbar ---- */
+  .toolbar{display:flex; gap:12px; justify-content:center; margin:0 0 26px}
+  .tool{position:relative; width:78px; height:78px; background:var(--cream); border:2px solid #f2e6cf;
+    border-radius:18px; cursor:pointer; box-shadow:0 5px 0 #dcc8a2; display:flex; align-items:center; justify-content:center; touch-action:none}
+  .tool.active{border-color:var(--accent); box-shadow:0 5px 0 var(--accent-d); transform:translateY(1px)}
+  .tool.disabled{opacity:.45; cursor:not-allowed}
+  .tool .ic{width:52px; height:52px; background-position:center; background-repeat:no-repeat; background-size:contain}
+  .tool .badge{position:absolute; top:-10px; right:-10px; width:34px; height:34px;
+    background:url("CountHolder.png") center/contain no-repeat;
+    display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:900; color:#5b4a2f}
+  .actions{display:flex; gap:14px; justify-content:center; width:100%; max-width:420px}
+  .actions button{flex:1; border:none; border-radius:18px; padding:16px 10px; font-size:19px; font-weight:900;
+    cursor:pointer; letter-spacing:.5px}
+  .btn-restart{background:var(--cream); color:#6a5836; box-shadow:0 6px 0 #dcc8a2}
+  .btn-go{background:var(--accent); color:#fff; box-shadow:0 6px 0 var(--accent-d)}
+  .btn-go:disabled{opacity:.6; cursor:not-allowed}
+  .msg{text-align:center; margin-top:12px; min-height:20px; font-weight:800; font-size:15px;
+    text-shadow:0 1px 2px rgba(255,255,255,.5)}
+  .msg.win{color:#3f8c1e} .msg.lose{color:var(--accent-d)}
+  /* level-complete celebration */
+  .celebrate{position:fixed; inset:0; z-index:10000; display:flex; align-items:center; justify-content:center; pointer-events:none}
+  .celebrate .card{background:var(--cream); border:3px solid #fff; border-radius:24px; padding:18px 30px; text-align:center;
+    box-shadow:0 12px 30px rgba(40,40,60,.35); transform:scale(.4); opacity:0; animation:pop .5s cubic-bezier(.2,1.4,.5,1) forwards}
+  .celebrate .emoji{font-size:44px; line-height:1}
+  .celebrate .txt{font-size:22px; font-weight:900; color:var(--accent-d); margin-top:4px; white-space:nowrap}
+  .celebrate.out .card{animation:popout .3s ease forwards}
+  @keyframes pop{60%{transform:scale(1.1); opacity:1} 100%{transform:scale(1); opacity:1}}
+  @keyframes popout{to{transform:scale(.6); opacity:0}}
+  .confetti{position:fixed; top:-24px; z-index:10001; font-size:22px; pointer-events:none; animation:fall linear forwards}
+  @keyframes fall{to{transform:translateY(112vh) rotate(360deg); opacity:.15}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="lvnav">
+    <button id="prevBtn">‹</button>
+    <span class="lbl" id="lvlabel">Level 1</span>
+    <button id="nextBtn">›</button>
+  </div>
+
+  <div class="goalchip">
+    <div class="k">Goal</div>
+    <div class="v"><span class="caticon"></span><span id="catsHome">0</span>/<span id="catsTotal">1</span></div>
+  </div>
+  <div class="goal" id="goal"></div>
+
+  <div class="boardwrap"><div class="board" id="board"></div></div>
+
+  <div class="toolbar" id="toolbar"></div>
+  <div class="actions">
+    <button class="btn-restart" id="resetBtn">Restart</button>
+    <button class="btn-go" id="goBtn">Play</button>
+  </div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+/* ============================================================================
+   ASSET SYSTEM — real PNGs live beside this HTML (referenced by filename).
+   Empty slots fall back to the built-in SVG placeholders.
+   ========================================================================== */
+const ASSET_FILES = {
+  tileLight:'NormalGround.png',
+  tileDark:'NormalGround.png',
+  hedge:'TallGrassHedge.png',
+  den:'ExitDoor.png',
+  bowl:'CatNipFood.png',
+  yarn:'YarnBall.png',
+  fish:'FishFood.png',
+  wall:'JumpableObstacle.png',
+  base:'9SliceableBase.png',   // island slab, drawn under grass tiles (land only)
+  water:'WaterTile.png',
+  Side:'Side.png',        // walk right sheet (2 frames, left = flipped)
+  Front:'Front.png',      // walk down sheet
+  Back:'Back.png',        // walk up sheet
+  idleSheet:'CatIdleFrontAndBack.png',   // 512x256 = [ idle front | idle back ]
+  // 2-frame walk cycle later: RightWalk1/2, DownWalk1/2, UpWalk1/2
+};
+const svg = s => 'data:image/svg+xml,' + encodeURIComponent(s);
+const SVGART = {
+  tileLight: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='#aecb63'/></svg>`),
+  tileDark: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='#8fac4c'/></svg>`),
+  hedge: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='80'><rect y='40' width='60' height='40' fill='#9bb851'/><g stroke='#7a4f28' stroke-width='4'><rect x='6' y='6' width='7' height='52' fill='#b07a43'/><rect x='26' y='2' width='7' height='56' fill='#bd8850'/><rect x='46' y='6' width='7' height='52' fill='#b07a43'/><rect x='0' y='20' width='60' height='7' fill='#a86e39'/></g></svg>`),
+  den: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='#9bb851'/><path d='M8 52 V28 a22 22 0 0 1 44 0 V52Z' fill='#cda86e'/><path d='M18 52 V32 a12 12 0 0 1 24 0 V52Z' fill='#ff9d3c'/></svg>`),
+  bowl: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><ellipse cx='30' cy='36' rx='23' ry='11' fill='#f4a7ba'/><ellipse cx='30' cy='34' rx='17' ry='7.5' fill='#c9713f'/></svg>`),
+  yarn: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><circle cx='30' cy='32' r='20' fill='#6fa8dc'/></svg>`),
+  fish: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><path d='M10 30 C16 18 40 18 48 30 C40 42 16 42 10 30Z' fill='#7fb4e6'/><path d='M46 30 l10 -8 v16Z' fill='#6fa2d6'/></svg>`),
+  wall: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect x='6' y='12' width='48' height='40' rx='6' fill='#9a9084'/></svg>`),
+  IdleFront: svg(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='70'><ellipse cx='30' cy='42' rx='18' ry='22' fill='#fff' stroke='#e2dcec'/><path d='M18 24 l-3 -12 11 7Z' fill='#fff'/><path d='M42 24 l3 -12 -11 7Z' fill='#fff'/></svg>`),
+};
+function art(name){ return ASSET_FILES[name] || SVGART[name] || ''; }
+
+/* ---- levels (verified) ---- */
+const LEVELS = [
+  { name:"Come Home", goal:"Lay a trail of <b>catnip</b> so the cat pads home to the den.",
+    map:["  ...."," .....","a....A","..... ","...   "], inv:{catnip:4,yarn:0,fish:0} },
+  { name:"Open Floor", goal:"<b>Yarn</b> runs straight only — your one catnip goes on the bend.",
+    map:["a....",".....","  ...","  ..A"], inv:{catnip:1,yarn:5,fish:0} },
+  { name:"Over the Water", goal:"Water cuts across — no way around. Drop a <b>fish</b> on the far bank to <b>leap</b> it.",
+    map:[" ...A",".....","~~~~~",".....","a... "], inv:{catnip:1,yarn:4,fish:1} },
+  { name:"Three Barriers", goal:"Water, a wall, then water. Spend all three <b>fish</b> to leap through.",
+    map:["......A.","........","~~~~~~~~","........","########","........","~~~~~~~~","........",".a......"], inv:{catnip:2,yarn:7,fish:3} },
+  { name:"The Hedge Maze", goal:"Hedges are too tall to leap — <b>go around</b> and ration your catnip.",
+    map:["  HHHHH  "," a..H... ","HHH.H.HHH","H...H...H","H.HHHHH.H","H.......H","HHHHHHH.H"," ......A ","  HHHHH  "], inv:{catnip:6,yarn:11,fish:0} },
+  { name:"Pond & Hedges", goal:"Wind through the maze; a <b>pond</b> in the path needs your one <b>fish</b>.",
+    map:["  HHHHH  "," a..H... ","HHH~HHH.H","H.H.....H","H.HHHHH.H","H.H.....H","H.H.HHH H"," ......A ","  HHHHH  "], inv:{catnip:6,yarn:13,fish:1} },
+  { name:"The Grand Garden", goal:"Wind the hedges, then <b>leap</b> the pond and the wall. Two fish, tight catnip.",
+    map:["  HHHHHHH  "," a..H..... ","HHH~H.H.H.H","H.H.H.H.H.H","H.H.H.H.H.H","H.H#H.H.H.H","H.H.HHH.H.H","H.H.H...H.H","H.H.H.HHH.H"," .....H..A ","  HHHHHHH  "], inv:{catnip:8,yarn:21,fish:2} },
+  { name:"Two Gates", goal:"Two ways home, one <b>fish</b>. The lower path crosses a pond <i>and</i> a wall — the wrong one misses by one fish.",
+    map:[" HHHHHHH ","H..~....H","H.HHHHH. ","a.HHHHH.A","H.HHHHH.H","H.#..~..H"," HHHHHHH "], inv:{catnip:4,yarn:6,fish:1} },
+  { name:"Three Gates", goal:"Three lanes crossing <b>one, two, three</b> obstacles. One fish leaps one gate — others miss by 1 and 2.",
+    map:["  HHHHHHH  "," a........ ","HH.HH.HH.HH","HH~HH.HH~HH","HH.HH~HH.HH","HH.HH.HH~HH","HH.HH#HH.HH","HH.HH.HH#HH","HH.HH.HH.HH"," ......... ","H....A....H","  HHHHHHH  "], inv:{catnip:3,yarn:9,fish:1} },
+];
+const RES = { catnip:{art:'bowl',name:'CATNIP'}, yarn:{art:'yarn',name:'YARN'}, fish:{art:'fish',name:'FISH'} };
+const DIRS = { u:[0,-1], d:[0,1], l:[-1,0], r:[1,0] };
+
+// seeded RNG + per-level organic island silhouette (irregular rounded corners)
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function organicRadius(seed,cell){ const r=mulberry(seed*131+7);
+  const v=()=>((0.5+r()*0.75)*cell).toFixed(1)+'px';
+  return `${v()} ${v()} ${v()} ${v()} / ${v()} ${v()} ${v()} ${v()}`; }
+
+let L, W, H, grid, cats, beds, placed, inv, selected, running=false, cell=52, catsHome=0, emberTimer=null;
+const boardEl=document.getElementById('board'), msgEl=document.getElementById('msg');
+
+function loadLevel(idx){
+  L=idx; const lv=LEVELS[idx];
+  H=lv.map.length; W=lv.map[0].length; grid=[]; cats=[]; beds=[]; placed={}; catsHome=0;
+  for(let y=0;y<H;y++){ grid[y]=[];
+    for(let x=0;x<W;x++){ const c=lv.map[y][x];
+      if(c==='#') grid[y][x]='wall';
+      else if(c==='~') grid[y][x]='water';
+      else if(c==='H') grid[y][x]='hedge';
+      else if(c===' ') grid[y][x]='void';
+      else if(c>='a'&&c<='z'){ grid[y][x]='spawn'; cats.push({x,y,color:c}); }
+      else if(c>='A'&&c<='Z'){ grid[y][x]='bed'; beds.push({x,y,color:c.toLowerCase()}); }
+      else grid[y][x]='empty';
+    }
+  }
+  inv={...lv.inv};
+  selected = inv.catnip>0?'catnip':(inv.yarn>0?'yarn':'fish');
+  running=false; setMsg('');
+  document.getElementById('lvlabel').textContent='Level '+(idx+1);
+  document.getElementById('goal').innerHTML=lv.goal;
+  document.getElementById('catsTotal').textContent=cats.length;
+  buildToolbar();                 // toolbar affects available height
+  computeCell();                  // size tiles to the space left for the board
+  render(); updateGoal(); setGoButton('play');
+}
+
+// size tiles so the whole board fits the space left for it (width AND height)
+function computeCell(){
+  const bw=document.querySelector('.boardwrap');
+  const availW=((bw&&bw.clientWidth)||window.innerWidth)-16;   // margin for base rim
+  const availH=((bw&&bw.clientHeight)||360)-28;                // margin for base rim + shadow
+  cell=Math.max(16, Math.min(56, Math.floor(Math.min(availW/W, availH/H))));
+}
+let _refit;
+window.addEventListener('resize', ()=>{ if(running||W==null) return;
+  clearTimeout(_refit); _refit=setTimeout(()=>{ computeCell(); render(); }, 120); });
+
+function makeSprite(name, x, y, opts={}){
+  const d=document.createElement('div'); d.className='sprite '+(opts.cls||'');
+  const w=opts.w||cell, h=opts.h||cell;
+  d.style.width=w+'px'; d.style.height=h+'px';
+  d.style.left=(x*cell+(cell-w)/2)+'px';
+  d.style.top=(opts.anchorBottom ? (y*cell+cell-h) : (y*cell+(cell-h)/2))+'px';
+  if(name) d.style.backgroundImage='url("'+art(name)+'")';
+  if(opts.z!==undefined) d.style.zIndex=opts.z;
+  d.dataset.cell=x+','+y;
+  (opts.parent||boardEl).appendChild(d); return d;
+}
+function isLand(t){ return t!=='water' && t!=='void'; }
+
+function render(){
+  boardEl.innerHTML='';
+  boardEl.style.width=(W*cell)+'px'; boardEl.style.height=(H*cell)+'px';
+  // island base slab under the grass. Pads OUT toward the pond/edge, overlaps land a little,
+  // and stays flush against water (so it never slips under a water tile).
+  const base=document.createElement('div'); base.className='baselayer'; boardEl.appendChild(base);
+  const PT=5, PB=16, PS=12, OVER=5, R=15;   // top pad less; bottom pad more; R = corner radius
+  const ext=(nx,ny,pad)=>{ if(nx<0||ny<0||nx>=W||ny>=H) return pad; const t=grid[ny][nx];
+    if(t==='void') return pad; if(t==='water') return 0; return OVER; };
+  // island edge = neighbour is off-island (out of bounds or void); water stays flush (interior)
+  const edge=(nx,ny)=>{ if(nx<0||ny<0||nx>=W||ny>=H) return true; return grid[ny][nx]==='void'; };
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    if(!isLand(grid[y][x])) continue;
+    const l=ext(x-1,y,PS), r=ext(x+1,y,PS), u=ext(x,y-1,PT), d=ext(x,y+1,PB);
+    const b=document.createElement('div'); b.className='sprite basetile';
+    b.style.left=(x*cell-l)+'px'; b.style.top=(y*cell-u)+'px';
+    b.style.width=(cell+l+r)+'px'; b.style.height=(cell+u+d)+'px';
+    // round only true convex island corners (both sides face off-island)
+    const eU=edge(x,y-1), eD=edge(x,y+1), eL=edge(x-1,y), eR=edge(x+1,y);
+    b.style.borderRadius = ((eU&&eL)?R:0)+'px '+((eU&&eR)?R:0)+'px '+((eD&&eR)?R:0)+'px '+((eD&&eL)?R:0)+'px';
+    base.appendChild(b);
+  }
+  // island = the union of filled land tiles (organic shape; void = open pond)
+  const tl=document.createElement('div'); tl.className='tilelayer'; boardEl.appendChild(tl);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    if(!isLand(grid[y][x]) || grid[y][x]==='wall') continue;  // water/void = pond; wall art has its own grass
+    // keep a ~2.5px overlap so neighbouring tiles never show a hairline seam
+    makeSprite((x+y)%2? 'tileDark':'tileLight', x, y, {cls:'tile'+((x+y)%2?' dark':''), parent:tl, w:cell+5, h:cell+5});
+  }
+  // ground items
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const t=grid[y][x], key=x+','+y, gz=10+y*10;
+    if(t==='water') waterTile(x,y,gz);
+    else if(t==='wall'){ const wm=makeSprite('wall',x,y,{z:gz});
+      // orient the fence perpendicular to the crossing: rotate 90° for a horizontal (left/right) path
+      const walk=(nx,ny)=>{ if(nx<0||ny<0||nx>=W||ny>=H) return false; const g=grid[ny][nx];
+        return g==='empty'||g==='spawn'||g==='bed'; };
+      const hCross=walk(x-1,y)&&walk(x+1,y), vCross=walk(x,y-1)&&walk(x,y+1);
+      if(hCross && !vCross) wm.style.transform='rotate(90deg)';
+    }
+    else if(t==='bed'){ const d=makeSprite('den',x,y,{z:gz,w:cell,h:cell*1.15});
+      d.style.top=(y*cell - cell*0.30)+'px'; }   /* raised higher in its tile (levels avoid hedges above goals) */
+    else if(placed[key]){ const rs=makeSprite(RES[placed[key]].art,x,y,{z:gz,w:cell*0.78,h:cell*0.78});
+      if(key===justPlaced) rs.animate([               // drop onto the ground + a little settle-bounce
+        {transform:'translateY(-'+(cell*0.95)+'px)', opacity:0, offset:0},
+        {transform:'translateY(0)', opacity:1, offset:.6},
+        {transform:'translateY(-'+(cell*0.14)+'px)', opacity:1, offset:.78},
+        {transform:'translateY(0)', opacity:1, offset:1}],
+        {duration:300, easing:'cubic-bezier(.3,.65,.4,1)'}); }
+  }
+  // cats (idle facing away, like the reference)
+  cats.forEach(c=>{ const s=cell*1.5;
+    // outer = positioner (moves cell-to-cell + does the jump arc); inner body = sprite + facing flip
+    const el=makeSprite(null, c.x, c.y, {cls:'cat', w:s, h:s, anchorBottom:true, z:15+c.y*10+5});
+    const body=document.createElement('div'); body.className='catbody';
+    body.style.backgroundImage='url("'+art('idleSheet')+'")';
+    body.style.backgroundSize='200% 100%';
+    // bottom half of the board → face back (away); top half → face front (toward viewer)
+    body.style.backgroundPosition = (c.y >= H/2) ? '100% 0%' : '0% 0%';
+    el.appendChild(body); el.id='cat-'+c.color;
+  });
+  // hedges on top (cat passes behind)
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    if(grid[y][x]==='hedge') makeSprite('hedge',x,y,{w:cell,h:cell*1.35,anchorBottom:true,z:15+y*10+8});
+  }
+  // interaction grid
+  const ig=document.createElement('div'); ig.className='igrid';
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const c=document.createElement('div'); const t=grid[y][x];
+    c.className='icell'+(t==='empty'?'':' block');
+    c.dataset.x=x; c.dataset.y=y;
+    c.style.left=(x*cell)+'px'; c.style.top=(y*cell)+'px'; c.style.width=cell+'px'; c.style.height=cell+'px';
+    ig.appendChild(c);
+  }
+  boardEl.appendChild(ig);
+  justPlaced=null;   // one-shot: only the just-dropped lure animates
+}
+
+function buildToolbar(){ const tb=document.getElementById('toolbar'); tb.innerHTML='';
+  ['catnip','yarn','fish'].forEach(r=>{
+    if(LEVELS[L].inv[r]===0) return;
+    const t=document.createElement('div');
+    t.className='tool'+(selected===r?' active':'')+(inv[r]===0?' disabled':'');
+    t.innerHTML=`<div class="ic" style="background-image:url('${art(RES[r].art)}')"></div><div class="badge">${inv[r]}</div>`;
+    // pointerdown selects the snack AND starts a paint session, so you can drag onto the board
+    t.addEventListener('pointerdown', e=>{ if(running) return; e.preventDefault(); selected=r; painting=true; lastPaint=null; buildToolbar(); });
+    tb.appendChild(t);
+  }); }
+function updateGoal(){ document.getElementById('catsHome').textContent=catsHome; }
+function setMsg(t,c){ msgEl.textContent=t||''; msgEl.className='msg'+(c?' '+c:''); }
+
+/* ---- placement: tap to place/remove, or drag to paint a trail ---- */
+let painting=false, lastPaint=null, justPlaced=null;
+function icellFrom(cx,cy){ const el=document.elementFromPoint(cx,cy);
+  return (el && el.classList && el.classList.contains('icell')) ? el : null; }
+function paintCell(cell){
+  if(!cell) return;
+  const x=+cell.dataset.x, y=+cell.dataset.y, key=x+','+y;
+  if(key===lastPaint) return; lastPaint=key;
+  if(grid[y][x]!=='empty' || placed[key]) return;        // paint only onto empty grass
+  if(inv[selected]<=0){ setMsg('No '+RES[selected].name+' left — pick some up or Restart.','lose'); return; }
+  placed[key]=selected; inv[selected]--; justPlaced=key; render(); buildToolbar(); setMsg('');
+}
+function onPaintDown(e){
+  if(running) return;
+  const cell = (e.target.classList && e.target.classList.contains('icell')) ? e.target : icellFrom(e.clientX,e.clientY);
+  if(!cell) return;
+  e.preventDefault();
+  const x=+cell.dataset.x, y=+cell.dataset.y, key=x+','+y;
+  if(placed[key]){ inv[placed[key]]++; delete placed[key]; render(); buildToolbar(); setMsg(''); painting=false; return; }
+  painting=true; lastPaint=null; paintCell(cell);
+}
+function onPaintMove(e){ if(!painting||running) return; e.preventDefault(); paintCell(icellFrom(e.clientX,e.clientY)); }
+function endPaint(){ painting=false; lastPaint=null; }
+boardEl.addEventListener('pointerdown', onPaintDown);
+document.addEventListener('pointermove', onPaintMove, {passive:false});
+document.addEventListener('pointerup', endPaint);
+document.addEventListener('pointercancel', endPaint);
+
+document.getElementById('resetBtn').onclick=()=>{ if(!running) loadLevel(L); };
+// Play → runs the level; after a win it becomes Next (or Replay on the last level)
+function setGoButton(mode){
+  const b=document.getElementById('goBtn');
+  if(mode==='next'){
+    if(L<LEVELS.length-1){ b.textContent='Next ›'; b.onclick=()=>loadLevel(L+1); }
+    else { b.textContent='Replay'; b.onclick=()=>loadLevel(0); }
+  } else {
+    b.textContent='Play'; b.onclick=runGo;
+  }
+}
+document.getElementById('prevBtn').onclick=()=>{ if(!running&&L>0) loadLevel(L-1); };
+document.getElementById('nextBtn').onclick=()=>{ if(!running&&L<LEVELS.length-1) loadLevel(L+1); };
+
+/* ---- pathfinding ---- */
+function isTrail(x,y){ if(x<0||y<0||x>=W||y>=H) return false; const t=grid[y][x];
+  return t==='bed'||t==='spawn'||!!placed[x+','+y]; }
+function tileType(x,y){ const k=x+','+y; return placed[k]||grid[y][x]; }
+function findPath(cat,bed){
+  const start=cat.x+','+cat.y+',n'; const q=[{x:cat.x,y:cat.y,d:'n'}]; const prev={}; prev[start]=null;
+  while(q.length){ const s=q.shift();
+    if(s.x===bed.x&&s.y===bed.y) return reconstruct(prev,s);
+    const tt=tileType(s.x,s.y);
+    const exits = tt==='yarn' ? (s.d==='n'?[]:[s.d]) : ['u','d','l','r'];
+    for(const e of exits){ const [dx,dy]=DIRS[e];
+      const nx=s.x+dx, ny=s.y+dy;
+      if(isTrail(nx,ny)) tryPush(q,prev,s,nx,ny,e);
+      const mx=s.x+dx, my=s.y+dy;
+      const midBlocks = mx>=0&&my>=0&&mx<W&&my<H && (grid[my][mx]==='hedge'||grid[my][mx]==='void');
+      const lx=s.x+2*dx, ly=s.y+2*dy;
+      if(!midBlocks && lx>=0&&ly>=0&&lx<W&&ly<H && placed[lx+','+ly]==='fish') tryPush(q,prev,s,lx,ly,e);
+    }
+  }
+  return null;
+}
+function tryPush(q,prev,s,nx,ny,e){ const key=nx+','+ny+','+e; if(prev[key]!==undefined) return;
+  prev[key]={x:s.x,y:s.y,d:s.d}; q.push({x:nx,y:ny,d:e}); }
+function reconstruct(prev,end){ const path=[]; let cur={x:end.x,y:end.y,d:end.d};
+  while(cur){ path.push({x:cur.x,y:cur.y}); cur=prev[cur.x+','+cur.y+','+cur.d]; }
+  path.reverse(); const out=[];
+  for(const c of path){ if(!out.length||out[out.length-1].x!==c.x||out[out.length-1].y!==c.y) out.push(c); }
+  return out;
+}
+
+/* ---- simulation + cat walk animation (2-frame sheets) ---- */
+function faceDir(from,to){ if(to.x>from.x) return 'right'; if(to.x<from.x) return 'left'; if(to.y>from.y) return 'down'; return 'up'; }
+const CAT_SHEET = { right:'Side', left:'Side', down:'Front', up:'Back' };
+function moveCat(el, from, to, frame){
+  const dir=faceDir(from,to), s=cell*1.5, body=el.firstChild;
+  const dist=Math.abs(to.x-from.x)+Math.abs(to.y-from.y);
+  const flip = dir==='left' ? 'scaleX(-1) ' : '';
+  // sprite frame + facing on the inner body (flip stays independent of the jump arc)
+  body.style.backgroundImage='url("'+art(CAT_SHEET[dir])+'")';
+  body.style.backgroundSize='200% 100%';
+  body.style.backgroundPosition=(frame===1?'0% 0%':'100% 0%');
+  body.style.transform = flip.trim() || 'none';
+  // move the positioner cell-to-cell
+  el.style.width=s+'px'; el.style.height=s+'px';
+  el.style.left=(to.x*cell+(cell-s)/2)+'px';
+  el.style.top=(to.y*cell+cell-s)+'px';
+  el.style.zIndex=15+to.y*10+5;
+  if(dist>1){
+    // leap: quick straight move + a real up-and-down arc, done within one step (clean back-to-back)
+    el.style.transition='left .34s ease-in-out, top .34s ease-in-out';
+    body.getAnimations().forEach(a=>a.cancel());
+    body.animate(
+      [{transform:flip+'translateY(0)'},
+       {transform:flip+'translateY(-52%)', offset:.5},
+       {transform:flip+'translateY(0)'}],
+      {duration:340, easing:'cubic-bezier(.33,0,.3,1)'});
+  } else {
+    el.style.transition='left .2s linear, top .2s linear';
+  }
+}
+function runGo(){
+  if(running) return;
+  const paths=[];
+  for(const cat of cats){ const bed=beds.find(b=>b.color===cat.color);
+    if(!bed){ setMsg('⚠ no matching den','lose'); return; }
+    const p=findPath(cat,bed);
+    if(!p){ setMsg('🐾 The cat can\'t reach the den — mind the hedges, gaps and turns.','lose'); return; }
+    paths.push({cat,path:p});
+  }
+  running=true; setMsg(''); document.getElementById('goBtn').disabled=true;
+  document.querySelector('.igrid').style.pointerEvents='none';
+  const maxLen=Math.max(...paths.map(p=>p.path.length));
+  const WALK_MS=210, LEAP_MS=380;   // leaps get more time so the jump reads slower
+  let step=1, frame=1;
+  (function tick(){
+    frame = frame===1?2:1;
+    let leaped=false;
+    paths.forEach(pp=>{
+      if(step<pp.path.length){
+        const from=pp.path[step-1], to=pp.path[step];
+        if(Math.abs(to.x-from.x)+Math.abs(to.y-from.y)>1) leaped=true;
+        const el=document.getElementById('cat-'+pp.cat.color);
+        moveCat(el, from, to, frame);
+        if(placed[to.x+','+to.y]){ delete placed[to.x+','+to.y]; fadeGround(to.x,to.y); }
+        if(step===pp.path.length-1){ catsHome++; updateGoal(); setTimeout(()=>catHomeState(el), 300); }
+      }
+    });
+    step++;
+    if(step>=maxLen+1){
+      setTimeout(()=>{ celebrate();
+        setMsg('😻 Home! '+(L<LEVELS.length-1?'Next level unlocked →':'You finished the garden!'),'win');
+        running=false; document.getElementById('goBtn').disabled=false; setGoButton('next'); }, 250);
+      return;
+    }
+    setTimeout(tick, leaped ? LEAP_MS : WALK_MS);
+  })();
+}
+// water tile that extends toward the open pond and mask-fades its own texture to transparent there
+function waterTile(x,y,z){
+  const off=(nx,ny)=> nx<0||ny<0||nx>=W||ny>=H || grid[ny][nx]==='void';   // pond / off-island
+  const E=Math.round(cell*0.55);
+  const l=off(x-1,y)?E:0, r=off(x+1,y)?E:0, u=off(x,y-1)?E:0, d=off(x,y+1)?E:0;
+  const w=cell+l+r, h=cell+u+d;
+  const el=document.createElement('div'); el.className='sprite watertile'; el.dataset.cell=x+','+y; el.style.zIndex=z;
+  el.style.left=(x*cell-l)+'px'; el.style.top=(y*cell-u)+'px'; el.style.width=w+'px'; el.style.height=h+'px';
+  el.style.backgroundImage='url("'+art('water')+'")';
+  const m=[];
+  if(r) m.push('linear-gradient(to right,#000 '+(100*(cell+l)/w).toFixed(1)+'%,transparent 100%)');
+  if(l) m.push('linear-gradient(to left,#000 '+(100*(cell+r)/w).toFixed(1)+'%,transparent 100%)');
+  if(d) m.push('linear-gradient(to bottom,#000 '+(100*(cell+u)/h).toFixed(1)+'%,transparent 100%)');
+  if(u) m.push('linear-gradient(to top,#000 '+(100*(cell+d)/h).toFixed(1)+'%,transparent 100%)');
+  if(m.length){ const mi=m.join(',');
+    el.style.webkitMaskImage=mi; el.style.maskImage=mi;
+    el.style.webkitMaskRepeat='no-repeat'; el.style.maskRepeat='no-repeat';
+    el.style.webkitMaskSize='100% 100%'; el.style.maskSize='100% 100%';
+    if(m.length>1){ el.style.webkitMaskComposite='source-in'; el.style.maskComposite='intersect'; }
+  }
+  boardEl.appendChild(el);
+}
+function fadeGround(x,y){ [...boardEl.querySelectorAll('.sprite')].forEach(s=>{
+  if(s.dataset.cell===x+','+y && !s.classList.contains('cat') && !s.classList.contains('tile'))
+    { s.style.transition='opacity .3s'; s.style.opacity='.2'; } }); }
+
+// cat reaches the den: face front, shrink to 0.5, and set off a grand firework volley
+function catHomeState(el){
+  if(!el) return; const body=el.firstChild;
+  body.style.backgroundImage='url("'+art('idleSheet')+'")';
+  body.style.backgroundSize='200% 100%';
+  body.style.backgroundPosition='0% 0%';           // front idle
+  body.getAnimations().forEach(a=>a.cancel());
+  body.style.transition='transform .3s ease-in';
+  body.style.transform='scale(.5)';                // half size = tucked into the den
+  launchFireworks(el);
+}
+
+// ---- fireworks: a shell rises from the den and bursts into a coloured spray (colour cycles) ----
+const FW_COLORS=[['#ffd54a','#ff8a3d'],['#7fd1ff','#4a7bff'],['#ff8ad1','#c14aff'],
+                 ['#8bd450','#39a845'],['#ff6b6b','#ffd166'],['#a0f0ff','#28c0c8']];
+let fwColor=0;
+function fwDot(x,y,size,glow){
+  const d=document.createElement('div'); d.className='sprite'; d.style.pointerEvents='none'; d.style.zIndex=9500;
+  d.style.width=size+'px'; d.style.height=size+'px'; d.style.borderRadius='50%';
+  d.style.left=x+'px'; d.style.top=y+'px';
+  d.style.background='radial-gradient(circle,#fff 0%,'+glow+' 70%,rgba(0,0,0,0) 100%)';
+  d.style.boxShadow='0 0 '+(size*0.9)+'px '+glow;
+  boardEl.appendChild(d); return d;
+}
+function fwExplode(cx, cy, colors){
+  const n=16;
+  for(let i=0;i<n;i++){
+    const ang=Math.PI*2*i/n + Math.random()*0.15, spd=cell*(0.9+Math.random()*0.6);
+    const p=fwDot(cx, cy, cell*0.13, colors[i%colors.length]);
+    const dx=Math.cos(ang)*spd, dy=Math.sin(ang)*spd + cell*0.55;   // slight gravity droop
+    p.animate([
+      {transform:'translate(-50%,-50%) scale(1)', opacity:1},
+      {transform:`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.25)`, opacity:0}
+    ], {duration:820+Math.random()*260, easing:'cubic-bezier(.2,.6,.3,1)'});
+    setTimeout(()=>p.remove(), 1120);
+  }
+}
+function launchShell(cx, groundY, delay){
+  setTimeout(()=>{
+    const colors=FW_COLORS[fwColor++ % FW_COLORS.length];
+    const riseH=cell*(1.4+Math.random()*0.9), riseMs=460+Math.random()*160;
+    const shell=fwDot(cx, groundY, cell*0.16, colors[0]);
+    shell.animate([
+      {transform:'translate(-50%,-50%) translateY(0) scale(.6)', opacity:1},
+      {transform:`translate(-50%,-50%) translateY(${-riseH}px) scale(1)`, opacity:1}
+    ], {duration:riseMs, easing:'cubic-bezier(.15,.7,.4,1)'});
+    setTimeout(()=>{ shell.remove(); fwExplode(cx, groundY-riseH, colors); }, riseMs);
+  }, delay);
+}
+function launchFireworks(el){
+  const cx=parseFloat(el.style.left)+parseFloat(el.style.width)/2;
+  const gy=parseFloat(el.style.top)+parseFloat(el.style.height)*0.4;
+  launchShell(cx-cell*0.25, gy, 0);
+  launchShell(cx+cell*0.35, gy, 280);
+  launchShell(cx,           gy, 560);
+}
+
+/* ---- level-complete gratification ---- */
+const CHEERS = ["Purrfect! 🐾","Cat's home safe! 😻","Nailed the trail!","Meow-velous!","Home sweet den!",
+  "Paws-itively brilliant!","The cat's whiskers!","Snack quest complete!","Trail blazed! 🐈","Cozy den, happy cat!",
+  "Whisker-fect run!","One happy kitty!"];
+const CONFETTI = ["🐾","🐟","🧶","🌿","⭐","😺"];
+function celebrate(){
+  const o=document.createElement('div'); o.className='celebrate';
+  const txt=CHEERS[Math.floor(Math.random()*CHEERS.length)];
+  o.innerHTML='<div class="card"><div class="emoji">🎉</div><div class="txt">'+txt+'</div></div>';
+  document.body.appendChild(o);
+  for(let i=0;i<18;i++){ const c=document.createElement('div'); c.className='confetti';
+    c.textContent=CONFETTI[i%CONFETTI.length];
+    c.style.left=(Math.random()*100)+'vw';
+    c.style.animationDuration=(1+Math.random()*1.2)+'s';
+    c.style.animationDelay=(Math.random()*0.3)+'s';
+    document.body.appendChild(c); setTimeout(()=>c.remove(),2700);
+  }
+  setTimeout(()=>{ o.classList.add('out'); setTimeout(()=>o.remove(),300); },1600);
+}
+
+loadLevel(0);
+</script>
+</body>
+</html>
